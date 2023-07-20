@@ -964,10 +964,11 @@ Force casting with `as!` allows explicit type changes and is useful when you are
 
 `auth` marks a reference as "authorized," granting additional privileges for certain operations. It is used in scenarios where elevated access or permissions are required. In the CryptoPoops contract, `auth` is used to obtain authorized references when borrowing NFTs from the `ownedNFTs` dictionary. This allows the contract to access the full NFT metadata. 
 
-### 
+### Adding auth to contract
 
+Contract
 ```cadence
-import NonFungibleToken from 0x02
+import NonFungibleToken from 0x01
 pub contract CryptoPoops: NonFungibleToken {
   pub var totalSupply: UInt64
 
@@ -1012,7 +1013,7 @@ pub contract CryptoPoops: NonFungibleToken {
       return ref as! &NFT
     }
     
-    pub fun getNFTMetadata(id: UInt64): {String: String, Int} {
+    pub fun getNFTMetadata(id: UInt64): {String: AnyStruct} {
       let nft = borrowAuthNFT(id)
       return {"name": nft.name, "favouriteFood": nft.favouriteFood, "luckyNumber": nft.luckyNumber}
     }
@@ -1055,5 +1056,14 @@ pub contract CryptoPoops: NonFungibleToken {
     emit ContractInitialized()
     self.account.save(<- create Minter(), to: /storage/Minter)
   }
+}
+```
+
+Script
+```cadence
+import CryptoPoops from 0x01
+
+pub fun main(nftID: UInt64): {String: AnyStruct} {
+    return CryptoPoops.getNFTMetadata(nftID)
 }
 ```
