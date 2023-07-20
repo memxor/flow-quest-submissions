@@ -487,3 +487,81 @@ pub fun main() {
 
 ## Chapter 4 Lession 1
 
+### Explain what lives inside of an account.
+
+Inside a Flow blockchain account, there are three main components: contract code, account storage, and account metadata. The contract code is deployed within the account, and multiple contracts can coexist in the same account. Account storage acts as a container for the account's data, residing at paths such as /storage/, /public/, and /private/. 
+
+### What is the difference between the /storage/, /public/, and /private/ paths?
+
+The /storage/ path is accessible only to the account owner, while /public/ can be read by anyone but modified only by the owner. The /private/ path is accessible only to the owner and authorized users. Account metadata holds essential information about the account, such as its address and account keys.
+
+### What does .save() do? What does .load() do? What does .borrow() do?
+
+`.save()` is used to store data into account storage. It takes the data to be saved and the storage path as parameters.
+
+`.load()` is used to retrieve data from account storage. It takes the storage path as a parameter and returns the data.
+
+`.borrow()` is used to get a reference to data in account storage without copying it. It also takes the storage path as a parameter.
+
+### Explain why we couldn’t save something to our account storage inside of a script.
+
+Scripts in Cadence are read-only operations, meaning they cannot modify the state of the blockchain, including account storage. Saving data to account storage is a write operation that changes the state, and only transactions are allowed to perform such modifications.
+
+### Explain why I couldn’t save something to your account.
+
+Because each account in the Flow blockchain has its own isolated storage, which is accessible only to the owner of that account.
+
+### Define a contract that returns a resource that has at least 1 field in it. Then, write 2 transactions: 1. A transaction that first saves the resource to account storage, then loads it out of account storage, logs a field inside the resource, and destroys it. 2. A transaction that first saves the resource to account storage, then borrows a reference to it, and logs a field inside the resource.
+
+Contract
+```cadence
+pub contract MessageContract 
+{
+  pub resource Message 
+  {
+    pub var message: String
+
+    init(_message: String) 
+    {
+      self.message = _message
+    }
+  }
+
+  pub fun createMessage(_message: String): @Message 
+  {
+    return <- create Message(_message: _message)
+  }
+}
+```
+
+Transaction 1
+```cadence
+import MessageContract from 0x01
+
+transaction{
+  prepare(acc: AuthAccount)
+  {
+    acc.save<@MessageContract.Message>(<- MessageContract.createMessage(_message: "Hello"), to: /storage/message)
+    let message <- acc.load<@MessageContract.Message>(from: /storage/message) ?? panic("Nothing found in the path")
+    log(message.message)
+    destroy message
+  }
+}
+```
+
+Transaction 2
+```cadence
+import MessageContract from 0x01
+
+transaction{
+  prepare(acc: AuthAccount)
+  {
+    acc.save<@MessageContract.Message>(<- MessageContract.createMessage(_message: "Hello"), to: /storage/message)
+    let message = acc.borrow<&MessageContract.Message>(from: /storage/message) ?? panic("Nothing found in the path")
+    log(message.message)
+  }
+}
+```
+
+## Chapter 4 Lession 2
+
