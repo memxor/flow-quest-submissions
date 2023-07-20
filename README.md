@@ -565,3 +565,495 @@ transaction{
 
 ## Chapter 4 Lession 2
 
+### What does .link() do?
+
+The .link() function in Cadence is used to associate a resource with a specific capability and make it accessible from the /public/ or /private/ paths. It allows us to create a "capability link" that points to the resource's actual storage location in the /storage/ path of an account.
+
+### In your own words (no code), explain how we can use resource interfaces to only expose certain things to the /public/ path.
+
+Resource interfaces in Cadence help us control what information from a resource is exposed to the /public/ path. We define a resource interface specifying the fields and functions we want to make public. Then, we modify our resource to implement that interface. Using .link(), we create a capability link between the /public/ path and our resource, restricting access to only the interface-defined elements. Other users can borrow a reference to the resource from /public/, but they'll see only the specified fields and functions, ensuring data visibility control.
+
+### Deploy a contract that contains a resource that implements a resource interface. Then, do the following: 1. In a transaction, save the resource to storage and link it to the public with the restrictive interface. 2. Run a script that tries to access a non-exposed field in the resource interface, and see the error pop up. 3. Run the script and access something you CAN read from. Return it from the script.
+
+Contract
+```cadence
+pub contract Profile
+{
+    access(contract) var totalUsersCount: UInt64;
+
+    pub var publicProfileStoragePath: PublicPath;
+    pub var storageProfileStoragePath: StoragePath;
+
+    pub resource interface IUserProfilePublic
+    {
+        pub let id: UInt64;
+        pub let address: String;
+        pub var name: String;
+        
+        pub fun getUserProfileInfo(): UserProfileInfo;
+    }
+
+    pub resource UserProfile : IUserProfilePublic
+    {
+        pub let id: UInt64;
+        pub let address: String;
+        pub var name: String;
+
+        pub fun getUserProfileInfo(): UserProfileInfo
+        {
+            return UserProfileInfo(self.id, self.name, self.address);
+        }
+
+        pub fun updateUserName(_ name: String)
+        {
+            self.name = name;
+        }
+
+        init(_ id: UInt64, _ name: String, _ address: String)
+        {
+            self.id = id;
+            self.name = name;
+            self.address = address;
+        }
+    }
+
+    pub fun createUserProfile(_ name: String, _ address: String): @UserProfile
+    {
+        let newUserProfile <- create UserProfile(self.totalUsersCount, name, address);
+        self.totalUsersCount = self.totalUsersCount + 1;
+        return <- newUserProfile;
+    }
+
+    pub struct UserProfileInfo
+    {
+        pub let id: UInt64;
+        pub let name: String;
+        pub let address: String;
+
+        init(_ id: UInt64, _ name: String, _ address: String)
+        {
+            self.id = id;
+            self.name = name;
+            self.address = address;
+        }
+    }
+
+    init()
+    {
+        self.totalUsersCount = 0;
+
+        self.publicProfileStoragePath = /public/userProfile;
+        self.storageProfileStoragePath = /storage/userProfile;
+    }
+}
+```
+
+Transaction
+```cadence
+import Profile from 0x01;
+
+transaction(name: String)
+{
+  prepare(acct: AuthAccount) 
+  {
+    let newUserProfile <- Profile.createUserProfile(name, acct.address.toString());
+    acct.save(<- newUserProfile, to: Profile.storageProfileStoragePath);
+    acct.link<&Profile.UserProfile{Profile.IUserProfilePublic}>(Profile.publicProfileStoragePath, target: Profile.storageProfileStoragePath);
+  }
+}
+```
+
+Script with Non-accessable Fields
+```cadence
+import Profile from 0x01;
+
+pub fun main(add: Address)
+{
+  let publicCap = getAccount(add).getCapability(Profile.publicProfileStoragePath).borrow<&Profile.UserProfile{Profile.IUserProfilePublic}>() ?? panic("Can't find public path!");
+  publicCap.updateUserName("Memxor"); //member of restricted type is not accessable: updateUserName
+}
+```
+
+Scripts with accessable fields
+```cadence
+import Profile from 0x01;
+
+pub fun main(add: Address): Profile.UserProfileInfo
+{
+  let publicCap = getAccount(add).getCapability(Profile.publicProfileStoragePath).borrow<&Profile.UserProfile{Profile.IUserProfilePublic}>() ?? panic("Can't find public path!");
+  return publicCap.getUserProfileInfo();
+}
+```
+
+## Chapter 4 Lession 3
+
+### Why did we add a Collection to this contract? List the two main reasons.
+
+The two main reasons for adding a Collection to the contract are:
+
+1. **Efficient Storage:** Storing multiple NFTs in a Collection is more efficient than creating separate storage paths for each NFT.
+
+2. **Allowing Deposits:** The Collection allows others to deposit their NFTs into our account while restricting access to the `withdraw` function, preventing unauthorized withdrawals.
+
+### What do you have to do if you have resources “nested” inside of another resource? (“Nested resources”)
+
+When you have resources "nested" inside another resource, you must include a `destroy` function for the outer resource. This function manually destroys the nested resources, ensuring proper cleanup and memory management when removing the outer resource. It prevents resource leaks and ensures efficient memory usage.
+
+### Brainstorm some extra things we may want to add to this contract. Think about what might be problematic with this contract and how we could fix it. Idea #1: Do we really want everyone to be able to mint an NFT? 🤔. Idea #2: If we want to read information about our NFTs inside our Collection, right now we have to take it out of the Collection to do so. Is this good?
+
+Idea #1: To address the concern of everyone being able to mint an NFT, we could implement a Minter Resource, which will hold the minting functionality. This resource will only be hold by the admin making sure only the admin can make new mints.
+
+Idea #2: To improve the process of reading information about NFTs inside the Collection, we could create a function within the Collection that allows us to query specific NFTs without withdrawing them from the Collection. This function could take the NFT ID as an argument and return relevant information about the NFT, such as its metadata or ownership details. 
+
+## Chapter 4 Lession 4
+
+### Adding comments to contracts
+
+```cadence
+pub contract CryptoPoops {
+  pub var totalSupply: UInt64
+
+  // NFT resource represents a unique token with additional information.
+  pub resource NFT {
+    pub let id: UInt64 // A unique identifier for the NFT.
+    pub let name: String // Name of the NFT.
+    pub let favouriteFood: String // The NFT's favorite food.
+    pub let luckyNumber: Int // A lucky number associated with the NFT.
+
+    // Constructor to initialize the NFT with name, favorite food, and lucky number.
+    init(_name: String, _favouriteFood: String, _luckyNumber: Int) {
+      self.id = self.uuid
+      self.name = _name
+      self.favouriteFood = _favouriteFood
+      self.luckyNumber = _luckyNumber
+    }
+  }
+
+  // CollectionPublic resource interface defines functions that can be accessed by the public.
+  pub resource interface CollectionPublic {
+    pub fun deposit(token: @NFT) // Allows the public to deposit an NFT into the collection.
+    pub fun getIDs(): [UInt64] // Allows the public to get a list of NFT IDs in the collection.
+    pub fun borrowNFT(id: UInt64): &NFT // Allows the public to borrow a reference to an NFT in the collection.
+  }
+
+  // Collection resource represents a collection of NFTs owned by an account.
+  pub resource Collection: CollectionPublic {
+    pub var ownedNFTs: @{UInt64: NFT} // Dictionary to store NFTs mapped to their IDs.
+
+    // Function to deposit an NFT into the collection.
+    pub fun deposit(token: @NFT) {
+      self.ownedNFTs[token.id] <-! token
+    }
+
+    // Function to withdraw an NFT from the collection using its ID.
+    pub fun withdraw(withdrawID: UInt64): @NFT {
+      let nft <- self.ownedNFTs.remove(key: withdrawID)
+              ?? panic("This NFT does not exist in this Collection.")
+      return <- nft
+    }
+
+    // Function to get a list of all NFT IDs stored in the collection.
+    pub fun getIDs(): [UInt64] {
+      return self.ownedNFTs.keys
+    }
+
+    // Function to borrow a reference to an NFT in the collection by its ID.
+    pub fun borrowNFT(id: UInt64): &NFT {
+      return (&self.ownedNFTs[id] as &NFT?)!
+    }
+
+    // Constructor to initialize an empty collection.
+    init() {
+      self.ownedNFTs <- {}
+    }
+
+    // Destroy function to clean up resources associated with the collection.
+    destroy() {
+      destroy self.ownedNFTs
+    }
+  }
+
+  // Function to create an empty Collection and return a reference to it.
+  pub fun createEmptyCollection(): @Collection {
+    return <- create Collection()
+  }
+
+  // Minter resource represents a resource that can mint NFTs.
+  pub resource Minter {
+
+    // Function to create a new NFT and return a reference to it.
+    pub fun createNFT(name: String, favouriteFood: String, luckyNumber: Int): @NFT {
+      return <- create NFT(_name: name, _favouriteFood: favouriteFood, _luckyNumber: luckyNumber)
+    }
+
+    // Function to create a new Minter resource and return a reference to it.
+    pub fun createMinter(): @Minter {
+      return <- create Minter()
+    }
+
+  }
+
+  // Init function initializes the contract, sets totalSupply to 0, and saves a Minter resource to account storage.
+  init() {
+    self.totalSupply = 0
+    self.account.save(<- create Minter(), to: /storage/Minter)
+  }
+}
+```
+
+## Chapter 5 Lession 1
+
+### Describe what an event is, and why it might be useful to a client.
+
+An event in smart contracts allows contracts to notify external clients about specific occurrences or state changes on the blockchain.
+
+### Deploy a contract with an event in it, and emit the event somewhere else in the contract indicating that it happened.
+
+```cadence
+pub contract MyContract {
+
+  pub event SomethingHappened(message: String)
+
+  pub fun triggerEvent(message: String) {
+    emit SomethingHappened(message: message)
+  }
+}
+```
+
+### Using the contract in step 2), add some pre conditions and post conditions to your contract to get used to writing them out.
+
+```cadence
+pub contract MyContract {
+  pub event SomethingHappened(message: String)
+
+  pub fun triggerEvent(message: String) {
+    pre {
+      message.length > 0: "Message should not be empty."
+    }
+    post {
+      let emittedMessage = before(SomethingHappened).message
+      emittedMessage == message: "Event not emitted with the correct message."
+    }
+
+    emit SomethingHappened(message: message)
+  }
+}
+```
+
+### Contract Return Values
+
+```cadence
+pub contract Test {
+
+  // TODO
+  // Tell me whether or not this function will log the name.
+  // name: 'Jacob'
+  // Answer: Yes it will
+  pub fun numberOne(name: String) {
+    pre {
+      name.length == 5: "This name is not cool enough."
+    }
+    log(name)
+  }
+
+  // TODO
+  // Tell me whether or not this function will return a value.
+  // name: 'Jacob'
+  // Answer: No it wont
+  pub fun numberTwo(name: String): String {
+    pre {
+      name.length >= 0: "You must input a valid name."
+    }
+    post {
+      result == "Jacob Tucker"
+    }
+    return name.concat(" Tucker")
+  }
+
+  pub resource TestResource {
+    pub var number: Int
+
+    // TODO
+    // Tell me whether or not this function will log the updated number.
+    // Also, tell me the value of `self.number` after it's run.
+    // Answer: It will fail in post because `before(self.number)` is 0 but `result + 1` is 2, if it fails in post, the value of self.number shiould still be 0
+    pub fun numberThree(): Int {
+      post {
+        before(self.number) == result + 1
+      }
+      self.number = self.number + 1
+      return self.number
+    }
+
+    init() {
+      self.number = 0
+    }
+  }
+}
+```
+
+## Chapter 5 Lession 2
+
+### Explain why standards can be beneficial to the Flow ecosystem.
+
+Standards in the Flow ecosystem promote interoperability, simplify development, and attract more projects and developers. They ensure consistency, security, and user-friendly interfaces, fostering a robust and sustainable blockchain ecosystem.
+
+### What is YOUR favourite food?
+
+I'm gonna be biased and say Hyderabadi Chicken Biryani
+
+### Please fix this code
+
+Fixed Interface Code 
+```cadence
+pub contract interface ITest {
+  pub var number: Int
+
+  pub fun updateNumber(newNumber: Int) {
+    pre {
+      newNumber >= 0: "We don't like negative numbers for some reason. We're mean."
+    }
+    post {
+      self.number == newNumber: "Didn't update the number to be the new number."
+    }
+  }
+
+  pub resource interface IStuff {
+    pub var favouriteActivity: String
+  }
+
+  pub resource Stuff: IStuff {
+    pub var favouriteActivity: String
+  }
+}
+```
+
+Fixed Contract Code
+```cadence
+import ITest from 0x01
+
+pub contract Test: ITest {
+  pub var number: Int
+
+  pub fun updateNumber(newNumber: Int) {
+    self.number = 5
+  }
+
+  pub resource Stuff: ITest.IStuff 
+  {
+    pub var favouriteActivity: String 
+    
+    init() {
+      self.favouriteActivity = "Playing League of Legends."
+    }
+  }
+
+  init() {
+    self.number = 0
+  }
+}
+```
+
+## Chapter 5 Lession 3
+
+### What does “force casting” with as! do? Why is it useful in our Collection?
+
+Force casting with `as!` allows explicit type changes and is useful when you are certain the conversion is safe. In the CryptoPoops contract, it is used to convert between `@NFT` and `@NonFungibleToken.NFT` to ensure compatibility with the NonFungibleToken standard. It must be used carefully, as incorrect conversions can lead to runtime errors. In the contract, it is employed when storing `@NFT` tokens as `@NonFungibleToken.NFT` in the dictionary.
+
+### What does auth do? When do we use it?
+
+`auth` marks a reference as "authorized," granting additional privileges for certain operations. It is used in scenarios where elevated access or permissions are required. In the CryptoPoops contract, `auth` is used to obtain authorized references when borrowing NFTs from the `ownedNFTs` dictionary. This allows the contract to access the full NFT metadata. 
+
+### 
+
+```cadence
+import NonFungibleToken from 0x02
+pub contract CryptoPoops: NonFungibleToken {
+  pub var totalSupply: UInt64
+
+  pub event ContractInitialized()
+  pub event Withdraw(id: UInt64, from: Address?)
+  pub event Deposit(id: UInt64, to: Address?)
+
+  pub resource NFT: NonFungibleToken.INFT {
+    pub let id: UInt64
+
+    pub let name: String
+    pub let favouriteFood: String
+    pub let luckyNumber: Int
+
+    init(_name: String, _favouriteFood: String, _luckyNumber: Int) {
+      self.id = self.uuid
+
+      self.name = _name
+      self.favouriteFood = _favouriteFood
+      self.luckyNumber = _luckyNumber
+    }
+  }
+
+  pub resource Collection: NonFungibleToken.Provider, NonFungibleToken.Receiver, NonFungibleToken.CollectionPublic {
+    pub var ownedNFTs: @{UInt64: NonFungibleToken.NFT}
+
+    pub fun withdraw(withdrawID: UInt64): @NonFungibleToken.NFT {
+      let nft <- self.ownedNFTs.remove(key: withdrawID)
+            ?? panic("This NFT does not exist in this Collection.")
+      emit Withdraw(id: nft.id, from: self.owner?.address)
+      return <- nft
+    }
+
+    pub fun deposit(token: @NonFungibleToken.NFT) {
+      let nft <- token as! @NFT
+      emit Deposit(id: nft.id, to: self.owner?.address)
+      self.ownedNFTs[nft.id] <-! nft
+    }
+
+    pub fun borrowAuthNFT(id: UInt64): &NFT {
+      let ref = (&self.ownedNFTs[id] as auth &NonFungibleToken.NFT?)!
+      return ref as! &NFT
+    }
+    
+    pub fun getNFTMetadata(id: UInt64): {String: String, Int} {
+      let nft = borrowAuthNFT(id)
+      return {"name": nft.name, "favouriteFood": nft.favouriteFood, "luckyNumber": nft.luckyNumber}
+    }
+
+    pub fun getIDs(): [UInt64] {
+      return self.ownedNFTs.keys
+    }
+
+    pub fun borrowNFT(id: UInt64): &NonFungibleToken.NFT {
+      return (&self.ownedNFTs[id] as &NonFungibleToken.NFT?)!
+    }
+
+    init() {
+      self.ownedNFTs <- {}
+    }
+
+    destroy() {
+      destroy self.ownedNFTs
+    }
+  }
+
+  pub fun createEmptyCollection(): @NonFungibleToken.Collection {
+    return <- create Collection()
+  }
+
+  pub resource Minter {
+
+    pub fun createNFT(name: String, favouriteFood: String, luckyNumber: Int): @NFT {
+      return <- create NFT(_name: name, _favouriteFood: favouriteFood, _luckyNumber: luckyNumber)
+    }
+
+    pub fun createMinter(): @Minter {
+      return <- create Minter()
+    }
+
+  }
+
+  init() {
+    self.totalSupply = 0
+    emit ContractInitialized()
+    self.account.save(<- create Minter(), to: /storage/Minter)
+  }
+}
+```
