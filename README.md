@@ -305,15 +305,15 @@ pub contract CyptoLangsContract {
 ### Create a script that reads information from that resource using the reference from the function you defined in part 1.
 
 ```cadence
-pub contract CyptoLangsContract {
+import CyptoLangsContract from 0x01
 
-    pub var dictionaryOfCyptoLangss: @{String: CyptoLangs}
+pub fun main(key: String): String {
+    let ref = CyptoLangsContract.getReference(key: key)
 
-    pub resource CyptoLangs {
-        pub let language: String
-        init(_language: String) {
-            self.language = _language
-        }
+    if ref != nil {
+        return ref!.language
+    } else {
+        return "Language not found."
     }
 }
 ```
@@ -323,3 +323,167 @@ pub contract CyptoLangsContract {
 References are useful in Cadence because they allow us to access data without moving it around. They help maintain resource security and prevent unnecessary duplication, making them essential when working with valuable assets like resources on the Flow Blockchain.
 
 ## Chapter 3 Lession 4
+
+### Explain, in your own words, the 2 things resource interfaces can be used for (we went over both in today’s content)
+
+Resource interfaces in Cadence serve two main purposes: specifying requirements and access control. They act as guidelines for resources, defining the fields and functions they must implement. Additionally, when associated with a resource, interfaces control access, exposing only the specified elements while keeping the rest hidden. This ensures consistency, data privacy, and security within the codebase.
+
+### Define your own contract. Make your own resource interface and a resource that implements the interface. Create 2 functions. In the 1st function, show an example of not restricting the type of the resource and accessing its content. In the 2nd function, show an example of restricting the type of the resource and NOT being able to access its content.
+
+```cadence
+pub contract MyContract 
+{
+  pub resource interface IMyResource {
+    pub var name: String
+  }
+
+  pub resource MyResource: IMyResource {
+    pub var name: String
+
+    pub fun getInfo(): String {
+      return "Hello, I am ${self.name}."
+    }
+
+    init(name: String) {
+      self.name = name
+    }
+  }
+
+  pub fun exampleNoRestriction(): String {
+    let newResource: @MyResource <- create MyResource(name: "Alice")
+    let info = newResource.getInfo()
+    destroy newResource
+    return info
+  }
+
+  pub fun exampleWithRestriction(): String {
+    let newResource: @MyResource{IMyResource} <- create MyResource(name: "Bob")
+    let info = newResource.getInfo() //ERROR HERE: Member of restricted type not available: getInto()
+    destroy newResource
+    return info
+  }
+}
+```
+
+### How would we fix this code?
+
+Fixed Code
+```cadence
+pub contract Stuff {
+
+    pub struct interface ITest {
+      pub var greeting: String
+      pub var favouriteFruit: String
+    }
+
+    pub struct Test: ITest {
+      pub var greeting: String
+      pub var favouriteFruit: String
+
+      pub fun changeGreeting(newGreeting: String): String {
+        self.greeting = newGreeting
+        return self.greeting
+      }
+
+      init() {
+        self.greeting = "Hello!"
+        self.favouriteFruit = "Mango!"
+      }
+    }
+
+    pub fun fixThis() {
+      let test: Test = Test()
+      let newGreeting = test.changeGreeting(newGreeting: "Bonjour!")
+      log(newGreeting)
+    }
+}
+```
+
+## Chapter 3 Lession 5
+
+### Access Control Contract, Where the variables can be read from or written in
+
+Contract
+```cadence
+access(all) contract c {
+  pub var testStruct: SomeStruct
+
+  pub struct SomeStruct {
+
+    pub(set) var a: String
+
+    pub var b: String
+
+    access(contract) var c: String
+
+    access(self) var d: String
+
+    pub fun publicFunc() {}
+
+    access(contract) fun contractFunc() {}
+
+    access(self) fun privateFunc() {}
+
+
+    pub fun structFunc() {
+      self.a = "Jacob" //Can be read from and written to
+      self.b = "Jacob" //Can be read from and written to
+      self.c = "Jacob" //Can be read from and written to
+      self.d = "Jacob" //Can be read from and written to
+    }
+
+    init() {
+      self.a = "a"
+      self.b = "b"
+      self.c = "c"
+      self.d = "d"
+    }
+  }
+
+  pub resource SomeResource {
+      pub var e: Int
+
+      pub fun resourceFunc() {
+        c.testStruct.a = "Jacob" //Can be read from and written to
+        c.testStruct.b = "Jacob" //Can be read from
+        c.testStruct.c = "Jacob" //Can be read from
+        c.testStruct.d = "Jacob" //Can't read or write
+        self.e = 0 //Can be read from and written to
+      }
+
+      init() {
+          self.e = 17
+      }
+  }
+
+  pub fun createSomeResource(): @SomeResource {
+      return <- create SomeResource()
+  }
+
+  pub fun questsAreFun() {
+      self.testStruct.a = "Jacob" //Can be read from and written to
+      self.testStruct.b = "Jacob" //Can be read from
+      self.testStruct.c = "Jacob" //Can be read from
+      self.testStruct.d = "Jacob" //Can't read or write
+  }
+
+  init() {
+      self.testStruct = SomeStruct()
+  }
+}
+```
+
+Script
+```cadence
+import SomeContract from 0x01
+
+pub fun main() {
+      SomeContract.a = "Jacob" //Can be read from and written to
+      SomeContract.b = "Jacob" //Can be read from
+      SomeContract.c = "Jacob" //Can be read from
+      SomeContract.d = "Jacob" //Can be read from
+}
+```
+
+## Chapter 4 Lession 1
+
